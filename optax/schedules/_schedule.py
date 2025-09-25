@@ -524,15 +524,53 @@ def linear_onecycle_schedule(
         '`transition_steps`'
     )
 
-  return piecewise_interpolate_schedule(
-      'linear',
-      peak_value / div_factor,
-      {
-          int(pct_start * transition_steps): div_factor,
-          int(pct_final * transition_steps): 1.0 / div_factor,
-          transition_steps: 1.0 / final_div_factor,
-      },
-  )
+  if pct_start <= 0:
+    # No warmup - start at peak_value and decay directly
+    # Also need to handle pct_final creating zero-length intervals
+    decay_boundary = max(1, int(pct_final * transition_steps)) if pct_final < 1.0 else transition_steps
+    if decay_boundary >= transition_steps:
+      # No intermediate decay phase
+      return piecewise_interpolate_schedule(
+          'linear',
+          peak_value,
+          {
+              transition_steps: 1.0 / final_div_factor,
+          },
+      )
+    else:
+      return piecewise_interpolate_schedule(
+          'linear',
+          peak_value,
+          {
+              decay_boundary: 1.0 / div_factor,
+              transition_steps: 1.0 / final_div_factor,
+          },
+      )
+  else:
+    # Ensure at least 1 warmup step to avoid zero-length intervals
+    warmup_steps = max(1, int(pct_start * transition_steps))
+    # Handle edge case where warmup_steps == transition_steps
+    if warmup_steps >= transition_steps:
+      # Only warmup phase, no decay
+      return piecewise_interpolate_schedule(
+          'linear',
+          peak_value / div_factor,
+          {
+              int(transition_steps): div_factor,
+          },
+      )
+    else:
+      # Also ensure pct_final doesn't create zero-length intervals
+      decay_boundary = max(warmup_steps + 1, int(pct_final * transition_steps)) if pct_final < 1.0 else transition_steps
+      return piecewise_interpolate_schedule(
+          'linear',
+          peak_value / div_factor,
+          {
+              warmup_steps: div_factor,
+              decay_boundary: 1.0 / div_factor,
+              transition_steps: 1.0 / final_div_factor,
+          },
+      )
 
 
 def cosine_onecycle_schedule(
@@ -577,14 +615,37 @@ def cosine_onecycle_schedule(
         '`transition_steps`'
     )
 
-  return piecewise_interpolate_schedule(
-      'cosine',
-      peak_value / div_factor,
-      {
-          int(pct_start * transition_steps): div_factor,
-          int(transition_steps): 1.0 / (div_factor * final_div_factor),
-      },
-  )
+  if pct_start <= 0:
+    # No warmup - start at peak_value and decay directly
+    return piecewise_interpolate_schedule(
+        'cosine',
+        peak_value,
+        {
+            int(transition_steps): 1.0 / final_div_factor,
+        },
+    )
+  else:
+    # Ensure at least 1 warmup step to avoid zero-length intervals
+    warmup_steps = max(1, int(pct_start * transition_steps))
+    # Handle edge case where warmup_steps == transition_steps
+    if warmup_steps >= transition_steps:
+      # Only warmup phase, no decay
+      return piecewise_interpolate_schedule(
+          'cosine',
+          peak_value / div_factor,
+          {
+              int(transition_steps): div_factor,
+          },
+      )
+    else:
+      return piecewise_interpolate_schedule(
+          'cosine',
+          peak_value / div_factor,
+          {
+              warmup_steps: div_factor,
+              int(transition_steps): 1.0 / (div_factor * final_div_factor),
+          },
+      )
 
 
 def warmup_constant_schedule(
